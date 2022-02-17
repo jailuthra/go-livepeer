@@ -46,6 +46,7 @@ const (
 	Capability_VP9_Decode
 	Capability_VP8_Encode
 	Capability_VP9_Encode
+	Capability_SegmentSlicing
 )
 
 var CapabilityNameLookup = map[Capability]string{
@@ -72,6 +73,7 @@ var CapabilityNameLookup = map[Capability]string{
 	Capability_VP9_Decode:                 "VP9 decode",
 	Capability_VP8_Encode:                 "VP8 encode",
 	Capability_VP9_Encode:                 "VP9 encode",
+	Capability_SegmentSlicing:             "Segment slicing",
 }
 
 var CapabilityTestLookup = map[Capability]CapabilityTest{
@@ -121,6 +123,7 @@ func DefaultCapabilities() []Capability {
 		Capability_GOP,
 		Capability_AuthToken,
 		Capability_MPEG7VideoSignature,
+		Capability_SegmentSlicing,
 	}
 }
 
@@ -177,13 +180,16 @@ func (c1 CapabilityString) CompatibleWith(c2 CapabilityString) bool {
 	return true
 }
 
-func JobCapabilities(params *StreamParameters) (*Capabilities, error) {
+func JobCapabilities(params *StreamParameters, segPar *SegmentParameters) (*Capabilities, error) {
 	caps := make(map[Capability]bool)
 
 	// Define any default capabilities (especially ones that may be mandatory)
 	caps[Capability_AuthToken] = true
 	if params.VerificationFreq > 0 {
 		caps[Capability_MPEG7VideoSignature] = true
+	}
+	if segPar != nil {
+		caps[Capability_SegmentSlicing] = true
 	}
 
 	// capabilities based on requested output

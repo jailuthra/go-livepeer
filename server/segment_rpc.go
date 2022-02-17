@@ -415,7 +415,9 @@ func verifySegCreds(ctx context.Context, orch Orchestrator, segCreds string, bro
 	return md, ctx, nil
 }
 
-func SubmitSegment(ctx context.Context, sess *BroadcastSession, seg *stream.HLSSegment, nonce uint64, calcPerceptualHash, verified bool) (*ReceivedTranscodeResult, error) {
+func SubmitSegment(ctx context.Context, sess *BroadcastSession, seg *stream.HLSSegment, segPar *core.SegmentParameters,
+	nonce uint64, calcPerceptualHash, verified bool) (*ReceivedTranscodeResult, error) {
+
 	uploaded := seg.Name != "" // hijack seg.Name to convey the uploaded URI
 	if sess.OrchestratorInfo != nil {
 		if sess.OrchestratorInfo.AuthToken != nil {
@@ -424,7 +426,7 @@ func SubmitSegment(ctx context.Context, sess *BroadcastSession, seg *stream.HLSS
 		ctx = clog.AddVal(ctx, "orchestrator", sess.OrchestratorInfo.Transcoder)
 	}
 
-	segCreds, err := genSegCreds(sess, seg, calcPerceptualHash)
+	segCreds, err := genSegCreds(sess, seg, segPar, calcPerceptualHash)
 	if err != nil {
 		if monitor.Enabled {
 			monitor.SegmentUploadFailed(ctx, nonce, seg.SeqNo, monitor.SegmentUploadErrorGenCreds, err, false, sess.OrchestratorInfo.Transcoder)
@@ -634,7 +636,7 @@ func SubmitSegment(ctx context.Context, sess *BroadcastSession, seg *stream.HLSS
 	}, nil
 }
 
-func genSegCreds(sess *BroadcastSession, seg *stream.HLSSegment, calcPerceptualHash bool) (string, error) {
+func genSegCreds(sess *BroadcastSession, seg *stream.HLSSegment, segPar *core.SegmentParameters, calcPerceptualHash bool) (string, error) {
 
 	// Send credentials for our own storage
 	var storage *net.OSInfo
@@ -666,6 +668,7 @@ func genSegCreds(sess *BroadcastSession, seg *stream.HLSSegment, calcPerceptualH
 		DetectorEnabled:    detectorEnabled,
 		DetectorProfiles:   detectorProfiles,
 		CalcPerceptualHash: calcPerceptualHash,
+		SegmentParameters:  segPar,
 	}
 	sig, err := sess.Broadcaster.Sign(md.Flatten())
 	if err != nil {

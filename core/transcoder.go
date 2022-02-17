@@ -6,13 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/golang/glog"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 
 	"github.com/livepeer/go-livepeer/clog"
 	"github.com/livepeer/go-livepeer/common"
@@ -48,7 +49,7 @@ func (lt *LocalTranscoder) Transcode(ctx context.Context, md *SegTranscodingMeta
 		Accel: ffmpeg.Software,
 	}
 	profiles := md.Profiles
-	opts := profilesToTranscodeOptions(lt.workDir, ffmpeg.Software, profiles, md.CalcPerceptualHash)
+	opts := profilesToTranscodeOptions(lt.workDir, ffmpeg.Software, profiles, md.CalcPerceptualHash, md.SegmentParameters)
 	if md.DetectorEnabled {
 		opts = append(opts, detectorsToTranscodeOptions(lt.workDir, ffmpeg.Software, md.DetectorProfiles)...)
 	}
@@ -91,7 +92,7 @@ func (nv *NvidiaTranscoder) Transcode(ctx context.Context, md *SegTranscodingMet
 		Device: nv.device,
 	}
 	profiles := md.Profiles
-	out := profilesToTranscodeOptions(WorkDir, ffmpeg.Nvidia, profiles, md.CalcPerceptualHash)
+	out := profilesToTranscodeOptions(WorkDir, ffmpeg.Nvidia, profiles, md.CalcPerceptualHash, md.SegmentParameters)
 	if md.DetectorEnabled {
 		out = append(out, detectorsToTranscodeOptions(WorkDir, ffmpeg.Nvidia, md.DetectorProfiles)...)
 	}
@@ -270,7 +271,9 @@ func resToTranscodeData(ctx context.Context, res *ffmpeg.TranscodeResults, opts 
 	}, nil
 }
 
-func profilesToTranscodeOptions(workDir string, accel ffmpeg.Acceleration, profiles []ffmpeg.VideoProfile, calcPHash bool) []ffmpeg.TranscodeOptions {
+func profilesToTranscodeOptions(workDir string, accel ffmpeg.Acceleration, profiles []ffmpeg.VideoProfile, calcPHash bool,
+	segPar *SegmentParameters) []ffmpeg.TranscodeOptions {
+
 	opts := make([]ffmpeg.TranscodeOptions, len(profiles))
 	for i := range profiles {
 		o := ffmpeg.TranscodeOptions{
@@ -279,6 +282,10 @@ func profilesToTranscodeOptions(workDir string, accel ffmpeg.Acceleration, profi
 			Accel:        accel,
 			AudioEncoder: ffmpeg.ComponentOptions{Name: "copy"},
 			CalcSign:     calcPHash,
+		}
+		if segPar != nil {
+			o.From = segPar.From
+			o.To = segPar.To
 		}
 		opts[i] = o
 	}
