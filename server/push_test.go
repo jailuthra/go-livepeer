@@ -1748,3 +1748,25 @@ func TestPush_MultipartReturnMultiSession(t *testing.T) {
 	assert.Contains(bsm.untrustedPool.sus.list, ts2.URL)
 	assert.Equal(0, bsm.untrustedPool.sus.count)
 }
+
+func TestPush_Slice(t *testing.T) {
+	// assert http request body error returned
+	assert := assert.New(t)
+	// wait for any earlier tests to complete
+	assert.True(wgWait(&pushResetWg), "timed out waiting for earlier tests")
+	s, cancel := setupServerWithCancel()
+	defer serverCleanup(s)
+	defer cancel()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/live/10.ts", nil)
+	req.Header.Set("Content-Slice-From", "100")
+	req.Header.Set("Content-Slice-To", "10")
+	s.HandlePush(w, req)
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	require.Nil(t, err)
+	assert.Equal(http.StatusBadRequest, resp.StatusCode)
+	assert.Contains(string(body), "Invalid slice config from=100ms to=10ms")
+}
