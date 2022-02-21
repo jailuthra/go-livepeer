@@ -18,7 +18,9 @@ import (
 	"testing"
 	"time"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
@@ -1769,4 +1771,68 @@ func TestPush_Slice(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(http.StatusBadRequest, resp.StatusCode)
 	assert.Contains(string(body), "Invalid slice config from=100ms to=10ms")
+}
+
+func TestPush_SlicePass(t *testing.T) {
+	require := require.New(t)
+	assert := assert.New(t)
+	orch := &mockOrchestrator{}
+
+	orch.On("VerifySig", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	orch.On("AuthToken", mock.Anything, mock.Anything).Return(stubAuthToken)
+	s, cancel := setupServerWithCancel()
+	defer serverCleanup(s)
+	defer cancel()
+	// Create stub server
+	ts, mux := stubTLSServer()
+	defer ts.Close()
+
+	mux.HandleFunc("/segment", func(w http.ResponseWriter, r *http.Request) {
+		seg := r.Header.Get(segmentHeader)
+		md, _, err := verifySegCreds(context.TODO(), orch, seg, ethcommon.Address{})
+		require.NoError(err)
+		require.NotNil(md)
+		require.NotNil(md.SegmentParameters)
+		require.Equal(100*time.Millisecond, md.SegmentParameters.From)
+		require.Equal(200*time.Millisecond, md.SegmentParameters.To)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("test"))
+	})
+
+	sess := StubBroadcastSession(ts.URL)
+	sess.Params.Profiles = []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9}
+	sess.Params.ManifestID = "mani"
+	bsm := bsmWithSessList([]*BroadcastSession{sess})
+
+	url, _ := url.ParseRequestURI("test://some.host")
+	osd := drivers.NewMemoryDriver(url)
+	osSession := osd.NewSession("testPath")
+
+	pl := core.NewBasicPlaylistManager("xx", osSession, nil)
+
+	cxn := &rtmpConnection{
+		mid:         core.ManifestID("mani"),
+		nonce:       7,
+		pl:          pl,
+		profile:     &ffmpeg.P144p30fps16x9,
+		sessManager: bsm,
+		params: &core.StreamParameters{
+			Profiles: []ffmpeg.VideoProfile{ffmpeg.P144p25fps16x9},
+			Detection: core.DetectionConfig{
+				SelectedClassNames: []string{"adult"},
+			},
+		},
+	}
+
+	s.rtmpConnections["mani"] = cxn
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/live/mani/18.ts", nil)
+	req.Header.Set("Accept", "multipart/mixed")
+	req.Header.Set("Content-Slice-From", "100")
+	req.Header.Set("Content-Slice-To", "200")
+	s.HandlePush(w, req)
+	resp := w.Result()
+	defer resp.Body.Close()
+	assert.Equal(http.StatusServiceUnavailable, resp.StatusCode)
 }
